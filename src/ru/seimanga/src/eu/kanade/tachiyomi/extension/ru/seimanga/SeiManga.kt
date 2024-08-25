@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.SharedPreferences
 import android.widget.Toast
 import androidx.preference.EditTextPreference
+import androidx.preference.PreferenceScreen
 import eu.kanade.tachiyomi.multisrc.grouple.GroupLe
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.source.model.Filter
@@ -12,14 +13,14 @@ import okhttp3.Request
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
-class SeiManga : GroupLe("SeiManga", "https://seimanga.me", "ru") {
+class SeiManga : GroupLe("SeiManga", "https://1.seimanga.me", "ru") {
 
     private val preferences: SharedPreferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
     }
 
-    private var domain: String = preferences.getString(DOMAIN_TITLE, DOMAIN_DEFAULT)!!
-    override val baseUrl: String = domain
+    override val baseUrl by lazy { getPrefBaseUrl() }
+
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
         val url = super.searchMangaRequest(page, query, filters).url.newBuilder()
         (if (filters.isEmpty()) getFilterList().reversed() else filters.reversed()).forEach { filter ->
@@ -161,28 +162,40 @@ class SeiManga : GroupLe("SeiManga", "https://seimanga.me", "ru") {
         Genre("этти", "el_1354"),
     )
 
-    override fun setupPreferenceScreen(screen: androidx.preference.PreferenceScreen) {
+    override fun setupPreferenceScreen(screen: PreferenceScreen) {
         super.setupPreferenceScreen(screen)
         EditTextPreference(screen.context).apply {
-            key = DOMAIN_TITLE
-            this.title = DOMAIN_TITLE
-            summary = domain
-            this.setDefaultValue(DOMAIN_DEFAULT)
-            dialogTitle = DOMAIN_TITLE
-            setOnPreferenceChangeListener { _, newValue ->
-                try {
-                    val res = preferences.edit().putString(DOMAIN_TITLE, newValue as String).commit()
-                    Toast.makeText(screen.context, "Для смены домена необходимо перезапустить приложение с полной остановкой.", Toast.LENGTH_LONG).show()
-                    res
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                    false
-                }
+            key = BASE_URL_PREF
+            title = BASE_URL_PREF_TITLE
+            summary = "${getPrefBaseUrl()}\n\n" + BASE_URL_PREF_SUMMARY
+            setDefaultValue(super.baseUrl)
+            dialogTitle = BASE_URL_PREF_TITLE
+            dialogMessage = "По умолчанию: ${super.baseUrl}"
+            setOnPreferenceChangeListener { _, _ ->
+                Toast.makeText(screen.context, RESTART_APP_MESSAGE, Toast.LENGTH_LONG).show()
+                true
             }
         }.let(screen::addPreference)
     }
+
+    private fun getPrefBaseUrl(): String = preferences.getString(BASE_URL_PREF, super.baseUrl)!!
+
+    init {
+        preferences.getString(DEFAULT_BASE_URL_PREF, null).let { defaultBaseUrl ->
+            if (defaultBaseUrl != super.baseUrl) {
+                preferences.edit()
+                    .putString(BASE_URL_PREF, super.baseUrl)
+                    .putString(DEFAULT_BASE_URL_PREF, super.baseUrl)
+                    .apply()
+            }
+        }
+    }
+
     companion object {
-        private const val DOMAIN_TITLE = "Домен"
-        private const val DOMAIN_DEFAULT = "https://seimanga.me"
+        private const val BASE_URL_PREF = "overrideBaseUrl"
+        private const val BASE_URL_PREF_TITLE = "Домен"
+        private const val BASE_URL_PREF_SUMMARY = "Настройки будут обновлены при следующем обновлении расширения"
+        private const val DEFAULT_BASE_URL_PREF = "defaultBaseUrl"
+        private const val RESTART_APP_MESSAGE = "Для смены домена необходимо перезапустить приложение с полной остановкой"
     }
 }
